@@ -61,7 +61,17 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				court: 'hsl(var(--court))',
+				'court-line': 'hsl(var(--court-line))',
+				ball: 'hsl(var(--ball))',
+				player1: 'hsl(var(--player1))',
+				player2: 'hsl(var(--player2))'
+			},
+			backgroundImage: {
+				'gradient-court': 'var(--gradient-court)',
+				'gradient-primary': 'var(--gradient-primary)',
+				'gradient-accent': 'var(--gradient-accent)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
@@ -84,11 +94,32 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'ball-bounce': {
+					'0%, 100%': { transform: 'translateX(0) scale(1)' },
+					'50%': { transform: 'translateX(0) scale(1.1)' }
+				},
+				'ball-travel': {
+					'0%': { transform: 'translateX(0)' },
+					'100%': { transform: 'translateX(100%)' }
+				},
+				'pulse-glow': {
+					'0%, 100%': { 
+						boxShadow: '0 0 5px hsl(var(--primary))',
+						transform: 'scale(1)'
+					},
+					'50%': { 
+						boxShadow: '0 0 20px hsl(var(--primary)), 0 0 30px hsl(var(--primary))',
+						transform: 'scale(1.05)'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'ball-bounce': 'ball-bounce 0.5s ease-in-out infinite',
+				'ball-travel': 'ball-travel 2s linear',
+				'pulse-glow': 'pulse-glow 2s ease-in-out infinite'
 			}
 		}
 	},
