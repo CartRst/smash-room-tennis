@@ -28,6 +28,7 @@ export function CenaInicio() {
 
   const handleEntrarSala = () => {
     if (nomeJogador.trim() && codigoSala.trim()) {
+      console.log('Tentando entrar na sala:', codigoSala.trim(), 'com jogador:', nomeJogador.trim());
       dispatch({ type: 'ENTRAR_SALA', codigo: codigoSala.trim(), nome_jogador: nomeJogador.trim() });
       setShowEntrarSala(false);
       setNomeJogador('');

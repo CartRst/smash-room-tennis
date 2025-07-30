@@ -60,15 +60,19 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
       
     case 'ENTRAR_SALA':
+      console.log('ENTRAR_SALA action received:', action);
+      console.log('Current state:', state);
       // Se não há jogador1, este jogador vira jogador1, senão vira jogador2
       const temJogador1 = Boolean(state.jogador1_nome);
-      return {
+      const newState: GameState = {
         ...state,
         sala_codigo: action.codigo,
         jogador1_nome: temJogador1 ? state.jogador1_nome : action.nome_jogador,
         jogador2_nome: temJogador1 ? action.nome_jogador : state.jogador2_nome,
-        cena_atual: 'sala',
+        cena_atual: 'sala' as const,
       };
+      console.log('New state after ENTRAR_SALA:', newState);
+      return newState;
       
     case 'INICIAR_JOGO':
       return {
