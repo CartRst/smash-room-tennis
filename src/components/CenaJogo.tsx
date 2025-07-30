@@ -46,7 +46,7 @@ export function CenaJogo() {
     }
   };
 
-  const progressValue = ((2 - timer) / 2) * 100;
+  const progressValue = Math.max(0, Math.min(100, ((2 - timer) / 2) * 100));
   const isJogador1Turn = state.bola_direcao === 'indo_j1';
 
   return (
