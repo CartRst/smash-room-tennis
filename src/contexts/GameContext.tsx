@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useState, useEffect } from 'react';
 
 export interface GameState {
   // Jogadores
@@ -12,6 +12,7 @@ export interface GameState {
   jogo_ativo: boolean;
   vencedor: string | null;
   sala_codigo: string | null;
+  sala_id: string | null;
   
   // Estado da cena
   cena_atual: 'inicio' | 'sala' | 'jogo' | 'resultado';
@@ -20,11 +21,18 @@ export interface GameState {
   bola_movendo: boolean;
   timer_ativo: boolean;
   pode_rebater: boolean;
+  
+  // Estado do multiplayer
+  isMultiplayer: boolean;
+  currentPlayer: string | null;
 }
 
 type GameAction =
   | { type: 'CRIAR_SALA'; codigo: string; nome_jogador: string }
   | { type: 'ENTRAR_SALA'; codigo: string; nome_jogador: string }
+  | { type: 'CRIAR_SALA_MULTIPLAYER'; codigo: string; nome_jogador: string; sala_id: string }
+  | { type: 'ENTRAR_SALA_MULTIPLAYER'; codigo: string; nome_jogador: string; sala_id: string }
+  | { type: 'SYNC_MULTIPLAYER_STATE'; sala: Partial<GameState> }
   | { type: 'INICIAR_JOGO' }
   | { type: 'REBATER' }
   | { type: 'TIMEOUT_REBATER' }
@@ -43,10 +51,13 @@ const initialState: GameState = {
   jogo_ativo: false,
   vencedor: null,
   sala_codigo: null,
+  sala_id: null,
   cena_atual: 'inicio',
   bola_movendo: false,
   timer_ativo: false,
   pode_rebater: false,
+  isMultiplayer: false,
+  currentPlayer: null,
 };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -61,12 +72,49 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       
     case 'ENTRAR_SALA':
       // Para demo local - simula entrada na sala
+      // Se não há jogador 1, este se torna o jogador 1
+      // Se já há jogador 1, este se torna o jogador 2
+      if (!state.jogador1_nome) {
+        return {
+          ...state,
+          sala_codigo: action.codigo,
+          jogador1_nome: action.nome_jogador,
+          cena_atual: 'sala',
+        };
+      } else {
+        return {
+          ...state,
+          sala_codigo: action.codigo,
+          jogador2_nome: action.nome_jogador,
+          cena_atual: 'sala',
+        };
+      }
+      
+    case 'CRIAR_SALA_MULTIPLAYER':
       return {
         ...state,
         sala_codigo: action.codigo,
-        jogador1_nome: state.jogador1_nome || 'Jogador Host',
-        jogador2_nome: action.nome_jogador,
+        sala_id: action.sala_id,
+        jogador1_nome: action.nome_jogador,
+        currentPlayer: action.nome_jogador,
+        isMultiplayer: true,
         cena_atual: 'sala',
+      };
+      
+    case 'ENTRAR_SALA_MULTIPLAYER':
+      return {
+        ...state,
+        sala_codigo: action.codigo,
+        sala_id: action.sala_id,
+        currentPlayer: action.nome_jogador,
+        isMultiplayer: true,
+        cena_atual: 'sala',
+      };
+      
+    case 'SYNC_MULTIPLAYER_STATE':
+      return {
+        ...state,
+        ...action.sala,
       };
       
     case 'INICIAR_JOGO':
@@ -91,7 +139,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         timer_ativo: true,
       };
       
-    case 'REBATER':
+    case 'REBATER': {
       const nova_direcao = state.bola_direcao === 'indo_j1' ? 'indo_j2' : 'indo_j1';
       return {
         ...state,
@@ -100,8 +148,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         pode_rebater: false,
         timer_ativo: false,
       };
+    }
       
-    case 'TIMEOUT_REBATER':
+    case 'TIMEOUT_REBATER': {
+      // Se a bola está indo para o jogador 1 e ele não rebateu, jogador 2 ganha ponto
+      // Se a bola está indo para o jogador 2 e ele não rebateu, jogador 1 ganha ponto
       const pontos_j1 = state.bola_direcao === 'indo_j1' ? state.jogador1_pontos : state.jogador1_pontos + 1;
       const pontos_j2 = state.bola_direcao === 'indo_j2' ? state.jogador2_pontos : state.jogador2_pontos + 1;
       
@@ -131,6 +182,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         pode_rebater: false,
         timer_ativo: false,
       };
+    }
       
     case 'SET_TIMER_ATIVO':
       return {
@@ -172,13 +224,36 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 const GameContext = createContext<{
   state: GameState;
   dispatch: React.Dispatch<GameAction>;
+  multiplayerActions?: {
+    criarSalaMultiplayer: (codigo: string, nomeJogador: string) => Promise<void>;
+    entrarSalaMultiplayer: (codigo: string, nomeJogador: string) => Promise<void>;
+    executarAcaoMultiplayer: (actionType: 'REBATER' | 'TIMEOUT_REBATER' | 'INICIAR_JOGO' | 'RESETAR_JOGO') => Promise<void>;
+  };
 } | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
   
+  // Funções do multiplayer (versão simplificada)
+  const multiplayerActions = {
+    criarSalaMultiplayer: async (codigo: string, nomeJogador: string) => {
+      console.log('Criando sala multiplayer:', codigo, nomeJogador);
+      dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador });
+    },
+    entrarSalaMultiplayer: async (codigo: string, nomeJogador: string) => {
+      console.log('Entrando na sala multiplayer:', codigo, nomeJogador);
+      dispatch({ type: 'ENTRAR_SALA', codigo, nome_jogador: nomeJogador });
+    },
+    executarAcaoMultiplayer: async (actionType: 'REBATER' | 'TIMEOUT_REBATER' | 'INICIAR_JOGO' | 'RESETAR_JOGO') => {
+      console.log('Executando ação multiplayer:', actionType);
+      dispatch({ type: actionType });
+    }
+  };
+  
+
+  
   return (
-    <GameContext.Provider value={{ state, dispatch }}>
+    <GameContext.Provider value={{ state, dispatch, multiplayerActions }}>
       {children}
     </GameContext.Provider>
   );
