@@ -1,213 +1,221 @@
 import { useState } from 'react';
-import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useGame } from '@/contexts/GameContext';
+import { Gamepad2, Users, Zap, Globe } from 'lucide-react';
 
 export function CenaInicio() {
-  const { state, dispatch, multiplayerActions } = useGame();
-  const [nomeJogador, setNomeJogador] = useState('');
+  const { state, multiplayerActions } = useGame();
   const [codigoSala, setCodigoSala] = useState('');
-  const [showCriarSala, setShowCriarSala] = useState(false);
-  const [showEntrarSala, setShowEntrarSala] = useState(false);
+  const [nomeJogador, setNomeJogador] = useState('');
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const gerarCodigoSala = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  };
+  const [error, setError] = useState('');
 
   const handleCriarSala = async () => {
     if (!nomeJogador.trim()) {
-      alert('Por favor, digite seu nome!');
+      setError('Digite seu nome!');
       return;
     }
 
     setLoading(true);
+    setError('');
+
     try {
-      const codigo = gerarCodigoSala();
-      console.log('Criando sala:', codigo, 'com jogador:', nomeJogador.trim());
+      const codigo = Math.random().toString(36).substring(2, 8).toUpperCase();
       
       if (isMultiplayer && multiplayerActions) {
-        await multiplayerActions.criarSalaMultiplayer(codigo, nomeJogador.trim());
+        await multiplayerActions.criarSalaMultiplayer(codigo, nomeJogador);
       } else {
-        dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador.trim() });
+        // Modo local
+        const { dispatch } = useGame();
+        dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador });
       }
-      
-      setShowCriarSala(false);
-      setNomeJogador('');
-    } catch (error) {
-      console.error('Erro ao criar sala:', error);
-      alert('Erro ao criar sala. Tente novamente.');
+    } catch (err) {
+      setError('Erro ao criar sala. Tente novamente.');
+      console.error('Erro ao criar sala:', err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleEntrarSala = async () => {
-    if (!nomeJogador.trim() || !codigoSala.trim()) {
-      alert('Por favor, preencha todos os campos!');
+    if (!codigoSala.trim() || !nomeJogador.trim()) {
+      setError('Digite o código da sala e seu nome!');
       return;
     }
 
     setLoading(true);
+    setError('');
+
     try {
-      console.log('Entrando na sala:', codigoSala.trim(), 'com jogador:', nomeJogador.trim());
-      
       if (isMultiplayer && multiplayerActions) {
-        await multiplayerActions.entrarSalaMultiplayer(codigoSala.trim(), nomeJogador.trim());
+        await multiplayerActions.entrarSalaMultiplayer(codigoSala, nomeJogador);
       } else {
-        dispatch({ type: 'ENTRAR_SALA', codigo: codigoSala.trim(), nome_jogador: nomeJogador.trim() });
+        // Modo local
+        const { dispatch } = useGame();
+        dispatch({ type: 'ENTRAR_SALA', codigo: codigoSala, nome_jogador: nomeJogador });
       }
-      
-      setShowEntrarSala(false);
-      setNomeJogador('');
-      setCodigoSala('');
-    } catch (error) {
-      console.error('Erro ao entrar na sala:', error);
-      alert('Erro ao entrar na sala. Verifique o código e tente novamente.');
+    } catch (err) {
+      setError('Erro ao entrar na sala. Verifique o código.');
+      console.error('Erro ao entrar na sala:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  const hasSupabaseConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="text-center space-y-4">
-          <div className="w-20 h-20 mx-auto bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center">
-            <span className="text-3xl">🏓</span>
+    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-black/50 backdrop-blur border-white/20">
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center mb-4">
+            <Gamepad2 className="w-12 h-12 text-blue-400 mr-3" />
+            <CardTitle className="text-3xl font-bold text-white">
+              Smash Room Tennis
+            </CardTitle>
           </div>
-          <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-            Smash Room Tennis
-          </CardTitle>
-          <CardDescription className="text-lg">
-            Jogue ping pong online com seus amigos!
-          </CardDescription>
+          <p className="text-white/70">
+            O melhor jogo de ping pong multiplayer!
+          </p>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Toggle Multiplayer */}
-          <div className="flex items-center justify-center gap-3 p-4 bg-muted/30 rounded-lg">
-            <span className="text-sm font-medium">🌐 Multiplayer Real</span>
-            <button
-              onClick={() => setIsMultiplayer(!isMultiplayer)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                isMultiplayer ? 'bg-blue-500' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  isMultiplayer ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-            <span className="text-xs text-muted-foreground">
-              {isMultiplayer ? 'Ativado' : 'Desativado'}
-            </span>
+          {/* Modo de Jogo */}
+          <div className="space-y-3">
+            <Label className="text-white font-semibold">Modo de Jogo:</Label>
+            <div className="flex gap-2">
+              <Button
+                variant={!isMultiplayer ? "default" : "outline"}
+                onClick={() => setIsMultiplayer(false)}
+                className="flex-1"
+                disabled={loading}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Local
+              </Button>
+              <Button
+                variant={isMultiplayer ? "default" : "outline"}
+                onClick={() => setIsMultiplayer(true)}
+                className="flex-1"
+                disabled={loading || !hasSupabaseConfig}
+              >
+                <Globe className="w-4 h-4 mr-2" />
+                Multiplayer
+              </Button>
+            </div>
+            
+            {isMultiplayer && !hasSupabaseConfig && (
+              <div className="text-yellow-400 text-sm bg-yellow-900/20 p-2 rounded">
+                ⚠️ Multiplayer requer configuração do Supabase
+              </div>
+            )}
+            
+            {!isMultiplayer && (
+              <div className="text-blue-400 text-sm bg-blue-900/20 p-2 rounded">
+                💡 Modo local: Jogue no mesmo computador
+              </div>
+            )}
           </div>
+
+          {/* Nome do Jogador */}
+          <div className="space-y-2">
+            <Label htmlFor="nome" className="text-white">
+              Seu Nome:
+            </Label>
+            <Input
+              id="nome"
+              type="text"
+              placeholder="Digite seu nome"
+              value={nomeJogador}
+              onChange={(e) => setNomeJogador(e.target.value)}
+              className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+              disabled={loading}
+            />
+          </div>
+
+          {/* Código da Sala */}
+          <div className="space-y-2">
+            <Label htmlFor="codigo" className="text-white">
+              Código da Sala:
+            </Label>
+            <Input
+              id="codigo"
+              type="text"
+              placeholder="Digite o código da sala"
+              value={codigoSala}
+              onChange={(e) => setCodigoSala(e.target.value.toUpperCase())}
+              className="bg-white/10 border-white/20 text-white placeholder:text-white/50 uppercase"
+              disabled={loading}
+            />
+          </div>
+
+          {/* Mensagem de Erro */}
+          {error && (
+            <div className="text-red-400 text-sm bg-red-900/20 p-2 rounded">
+              {error}
+            </div>
+          )}
 
           {/* Botões */}
           <div className="space-y-3">
-            <Dialog open={showCriarSala} onOpenChange={setShowCriarSala}>
-              <DialogTrigger asChild>
-                <Button 
-                  className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
-                  disabled={loading}
-                >
-                  🎮 Criar Nova Sala
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Criar Nova Sala</DialogTitle>
-                  <DialogDescription>
-                    Digite seu nome para criar uma nova sala de jogo
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="nome-criar">Seu Nome</Label>
-                    <Input
-                      id="nome-criar"
-                      value={nomeJogador}
-                      onChange={(e) => setNomeJogador(e.target.value)}
-                      placeholder="Digite seu nome"
-                      onKeyPress={(e) => e.key === 'Enter' && handleCriarSala()}
-                      disabled={loading}
-                    />
-                  </div>
-                  <Button 
-                    onClick={handleCriarSala} 
-                    className="w-full"
-                    disabled={loading || !nomeJogador.trim()}
-                  >
-                    {loading ? 'Criando...' : 'Criar Sala'}
-                  </Button>
+            <Button
+              onClick={handleCriarSala}
+              className="w-full bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold"
+              disabled={loading || !nomeJogador.trim()}
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Criando...
                 </div>
-              </DialogContent>
-            </Dialog>
+              ) : (
+                <div className="flex items-center">
+                  <Zap className="w-4 h-4 mr-2" />
+                  Criar Nova Sala
+                </div>
+              )}
+            </Button>
 
-            <Dialog open={showEntrarSala} onOpenChange={setShowEntrarSala}>
-              <DialogTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className="w-full h-12 text-lg font-semibold border-2 border-green-500/30 hover:border-green-500 hover:bg-green-50"
-                  disabled={loading}
-                >
-                  🔗 Entrar em Sala Existente
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Entrar em Sala</DialogTitle>
-                  <DialogDescription>
-                    Digite o código da sala e seu nome para entrar
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="codigo">Código da Sala</Label>
-                    <Input
-                      id="codigo"
-                      value={codigoSala}
-                      onChange={(e) => setCodigoSala(e.target.value.toUpperCase())}
-                      placeholder="Digite o código (ex: ABC123)"
-                      onKeyPress={(e) => e.key === 'Enter' && handleEntrarSala()}
-                      disabled={loading}
-                      maxLength={6}
-                      className="uppercase tracking-wider"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="nome-entrar">Seu Nome</Label>
-                    <Input
-                      id="nome-entrar"
-                      value={nomeJogador}
-                      onChange={(e) => setNomeJogador(e.target.value)}
-                      placeholder="Digite seu nome"
-                      onKeyPress={(e) => e.key === 'Enter' && handleEntrarSala()}
-                      disabled={loading}
-                    />
-                  </div>
-                  <Button 
-                    onClick={handleEntrarSala} 
-                    className="w-full"
-                    disabled={loading || !nomeJogador.trim() || !codigoSala.trim()}
-                  >
-                    {loading ? 'Entrando...' : 'Entrar na Sala'}
-                  </Button>
+            <Button
+              onClick={handleEntrarSala}
+              variant="outline"
+              className="w-full border-white/20 text-white hover:bg-white/10"
+              disabled={loading || !codigoSala.trim() || !nomeJogador.trim()}
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Entrando...
                 </div>
-              </DialogContent>
-            </Dialog>
+              ) : (
+                <div className="flex items-center">
+                  <Users className="w-4 h-4 mr-2" />
+                  Entrar na Sala
+                </div>
+              )}
+            </Button>
           </div>
 
-          {/* Informações */}
-          <div className="text-center text-sm text-muted-foreground">
-            <p>🎯 Primeiro a 13 pontos vence!</p>
-            <p>⏱️ Você tem 3 segundos para rebater</p>
+          {/* Instruções */}
+          <div className="text-white/60 text-sm space-y-2">
+            <div className="flex items-center">
+              <Gamepad2 className="w-4 h-4 mr-2" />
+              <span>Controles: W/S (J1) e ↑/↓ (J2)</span>
+            </div>
+            <div className="flex items-center">
+              <Zap className="w-4 h-4 mr-2" />
+              <span>Pressione ESPAÇO para rebater</span>
+            </div>
+            {isMultiplayer && (
+              <div className="flex items-center">
+                <Globe className="w-4 h-4 mr-2" />
+                <span>Compartilhe o código para jogar online</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
