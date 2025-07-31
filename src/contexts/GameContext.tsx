@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useState, useEffect } from 'react';
+import { useMultiplayer } from '@/hooks/useMultiplayer';
 
 export interface GameState {
   // Jogadores
@@ -106,6 +107,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         sala_codigo: action.codigo,
         sala_id: action.sala_id,
+        jogador2_nome: action.nome_jogador,
         currentPlayer: action.nome_jogador,
         isMultiplayer: true,
         cena_atual: 'sala',
@@ -120,69 +122,70 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'INICIAR_JOGO':
       return {
         ...state,
-        jogador1_pontos: 0,
-        jogador2_pontos: 0,
-        bola_direcao: Math.random() > 0.5 ? 'indo_j1' : 'indo_j2',
         jogo_ativo: true,
-        vencedor: null,
-        cena_atual: 'jogo',
         bola_movendo: true,
+        timer_ativo: true,
+        pode_rebater: true,
+        cena_atual: 'jogo',
+      };
+      
+    case 'REBATER':
+      return {
+        ...state,
+        bola_direcao: state.bola_direcao === 'indo_j1' ? 'indo_j2' : 'indo_j1',
         timer_ativo: true,
         pode_rebater: false,
       };
+      
+    case 'TIMEOUT_REBATER':
+      // Calcular pontos baseado na direção da bola
+      if (state.bola_direcao === 'indo_j1') {
+        // Bola estava indo para jogador 1, então jogador 2 marca ponto
+        return {
+          ...state,
+          jogador2_pontos: state.jogador2_pontos + 1,
+          bola_direcao: 'indo_j1',
+          timer_ativo: false,
+          pode_rebater: false,
+          bola_movendo: false,
+        };
+      } else {
+        // Bola estava indo para jogador 2, então jogador 1 marca ponto
+        return {
+          ...state,
+          jogador1_pontos: state.jogador1_pontos + 1,
+          bola_direcao: 'indo_j2',
+          timer_ativo: false,
+          pode_rebater: false,
+          bola_movendo: false,
+        };
+      }
       
     case 'MOVER_BOLA':
       return {
         ...state,
-        bola_movendo: false,
-        pode_rebater: true,
+        bola_movendo: true,
         timer_ativo: true,
+        pode_rebater: true,
       };
       
-    case 'REBATER': {
-      const nova_direcao = state.bola_direcao === 'indo_j1' ? 'indo_j2' : 'indo_j1';
+    case 'RESETAR_JOGO':
       return {
         ...state,
-        bola_direcao: nova_direcao,
-        bola_movendo: true,
-        pode_rebater: false,
+        jogador1_pontos: 0,
+        jogador2_pontos: 0,
+        bola_direcao: 'indo_j1',
+        jogo_ativo: false,
+        vencedor: null,
+        bola_movendo: false,
         timer_ativo: false,
+        pode_rebater: false,
       };
-    }
       
-    case 'TIMEOUT_REBATER': {
-      // Se a bola está indo para o jogador 1 e ele não rebateu, jogador 2 ganha ponto
-      // Se a bola está indo para o jogador 2 e ele não rebateu, jogador 1 ganha ponto
-      const pontos_j1 = state.bola_direcao === 'indo_j1' ? state.jogador1_pontos : state.jogador1_pontos + 1;
-      const pontos_j2 = state.bola_direcao === 'indo_j2' ? state.jogador2_pontos : state.jogador2_pontos + 1;
-      
-      const vencedor = pontos_j1 >= 13 ? state.jogador1_nome : 
-                      pontos_j2 >= 13 ? state.jogador2_nome : null;
-      
-      if (vencedor) {
-        return {
-          ...state,
-          jogador1_pontos: pontos_j1,
-          jogador2_pontos: pontos_j2,
-          vencedor,
-          jogo_ativo: false,
-          cena_atual: 'resultado',
-          bola_movendo: false,
-          pode_rebater: false,
-          timer_ativo: false,
-        };
-      }
-      
+    case 'VOLTAR_INICIO':
       return {
-        ...state,
-        jogador1_pontos: pontos_j1,
-        jogador2_pontos: pontos_j2,
-        bola_direcao: Math.random() > 0.5 ? 'indo_j1' : 'indo_j2',
-        bola_movendo: true,
-        pode_rebater: false,
-        timer_ativo: false,
+        ...initialState,
       };
-    }
       
     case 'SET_TIMER_ATIVO':
       return {
@@ -196,61 +199,103 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         pode_rebater: action.pode,
       };
       
-    case 'VOLTAR_INICIO':
-      return {
-        ...initialState,
-        cena_atual: 'inicio',
-      };
-      
-    case 'RESETAR_JOGO':
-      return {
-        ...state,
-        jogador1_pontos: 0,
-        jogador2_pontos: 0,
-        bola_direcao: Math.random() > 0.5 ? 'indo_j1' : 'indo_j2',
-        jogo_ativo: true,
-        vencedor: null,
-        cena_atual: 'jogo',
-        bola_movendo: true,
-        timer_ativo: true,
-        pode_rebater: false,
-      };
-      
     default:
       return state;
   }
 }
 
-const GameContext = createContext<{
+interface GameContextType {
   state: GameState;
   dispatch: React.Dispatch<GameAction>;
-  multiplayerActions?: {
+  multiplayerActions: {
     criarSalaMultiplayer: (codigo: string, nomeJogador: string) => Promise<void>;
     entrarSalaMultiplayer: (codigo: string, nomeJogador: string) => Promise<void>;
     executarAcaoMultiplayer: (actionType: 'REBATER' | 'TIMEOUT_REBATER' | 'INICIAR_JOGO' | 'RESETAR_JOGO') => Promise<void>;
   };
-} | null>(null);
+}
+
+const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
   
-  // Funções do multiplayer (versão simplificada)
+  // Verificar se Supabase está configurado
+  const hasSupabaseConfig = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  // Hook multiplayer (condicional)
+  const multiplayerHook = hasSupabaseConfig ? useMultiplayer(state.sala_id) : null;
+  
+  // Funções do multiplayer
   const multiplayerActions = {
     criarSalaMultiplayer: async (codigo: string, nomeJogador: string) => {
-      console.log('Criando sala multiplayer:', codigo, nomeJogador);
-      dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador });
+      if (hasSupabaseConfig && multiplayerHook) {
+        try {
+          const salaId = await multiplayerHook.criarSala(codigo, nomeJogador);
+          if (salaId) {
+            dispatch({ type: 'CRIAR_SALA_MULTIPLAYER', codigo, nome_jogador: nomeJogador, sala_id: salaId });
+          }
+        } catch (error) {
+          console.error('Erro ao criar sala multiplayer:', error);
+          // Fallback para modo local
+          dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador });
+        }
+      } else {
+        // Modo local
+        dispatch({ type: 'CRIAR_SALA', codigo, nome_jogador: nomeJogador });
+      }
     },
+    
     entrarSalaMultiplayer: async (codigo: string, nomeJogador: string) => {
-      console.log('Entrando na sala multiplayer:', codigo, nomeJogador);
-      dispatch({ type: 'ENTRAR_SALA', codigo, nome_jogador: nomeJogador });
+      if (hasSupabaseConfig && multiplayerHook) {
+        try {
+          const salaId = await multiplayerHook.entrarSala(codigo, nomeJogador);
+          if (salaId) {
+            dispatch({ type: 'ENTRAR_SALA_MULTIPLAYER', codigo, nome_jogador: nomeJogador, sala_id: salaId });
+          }
+        } catch (error) {
+          console.error('Erro ao entrar na sala multiplayer:', error);
+          // Fallback para modo local
+          dispatch({ type: 'ENTRAR_SALA', codigo, nome_jogador: nomeJogador });
+        }
+      } else {
+        // Modo local
+        dispatch({ type: 'ENTRAR_SALA', codigo, nome_jogador: nomeJogador });
+      }
     },
-    executarAcaoMultiplayer: async (actionType: 'REBATER' | 'TIMEOUT_REBATER' | 'INICIAR_JOGO' | 'RESETAR_JOGO') => {
-      console.log('Executando ação multiplayer:', actionType);
-      dispatch({ type: actionType });
-    }
+    
+          executarAcaoMultiplayer: async (actionType: 'REBATER' | 'TIMEOUT_REBATER' | 'INICIAR_JOGO' | 'RESETAR_JOGO') => {
+        if (hasSupabaseConfig && multiplayerHook && state.sala_id) {
+          try {
+            await multiplayerHook.executarAcao(actionType, state.currentPlayer || '');
+          } catch (error) {
+            console.error('Erro ao executar ação multiplayer:', error);
+          }
+        }
+        // Sempre executar localmente também
+        dispatch({ type: actionType });
+      }
   };
   
-
+  // Sincronizar estado com multiplayer
+  useEffect(() => {
+    if (hasSupabaseConfig && multiplayerHook && multiplayerHook.sala) {
+      const salaData = multiplayerHook.sala;
+      dispatch({
+        type: 'SYNC_MULTIPLAYER_STATE',
+        sala: {
+          jogador1_nome: salaData.jogador1_nome || state.jogador1_nome,
+          jogador2_nome: salaData.jogador2_nome || state.jogador2_nome,
+          jogador1_pontos: salaData.jogador1_pontos || state.jogador1_pontos,
+          jogador2_pontos: salaData.jogador2_pontos || state.jogador2_pontos,
+          bola_direcao: salaData.bola_direcao || state.bola_direcao,
+          jogo_ativo: salaData.jogo_ativo || state.jogo_ativo,
+          bola_movendo: salaData.bola_movendo || state.bola_movendo,
+          timer_ativo: salaData.timer_ativo || state.timer_ativo,
+          pode_rebater: salaData.pode_rebater || state.pode_rebater,
+        }
+      });
+    }
+  }, [hasSupabaseConfig, multiplayerHook?.sala, state.sala_id]);
   
   return (
     <GameContext.Provider value={{ state, dispatch, multiplayerActions }}>
@@ -261,7 +306,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
 export function useGame() {
   const context = useContext(GameContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useGame must be used within a GameProvider');
   }
   return context;

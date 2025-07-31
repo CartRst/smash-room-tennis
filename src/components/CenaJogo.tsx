@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -18,26 +18,33 @@ interface PaddlePosition {
 }
 
 export function CenaJogo() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, multiplayerActions } = useGame();
   const [timer, setTimer] = useState(3);
   const [ballPosition, setBallPosition] = useState<BallPosition>({ x: 50, y: 50, velocityX: 0, velocityY: 0 });
   const [paddle1Position, setPaddle1Position] = useState<PaddlePosition>({ y: 40, height: 20 });
   const [paddle2Position, setPaddle2Position] = useState<PaddlePosition>({ y: 40, height: 20 });
   const [gameStarted, setGameStarted] = useState(false);
-  const [ballSpeed, setBallSpeed] = useState(2);
-  const gameLoopRef = useRef<NodeJS.Timeout>();
+  const [ballSpeed, setBallSpeed] = useState(3); // Velocidade inicial aumentada
+  const gameLoopRef = useRef<number>();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const lastTimeRef = useRef<number>(0);
 
   // Iniciar jogo
-  const startGame = () => {
+  const startGame = useCallback(() => {
     setGameStarted(true);
     setBallPosition({ x: 50, y: 50, velocityX: ballSpeed, velocityY: 0 });
     dispatch({ type: 'INICIAR_JOGO' });
-  };
+    
+    // Sincronizar com multiplayer se ativo
+    if (state.isMultiplayer && multiplayerActions) {
+      multiplayerActions.executarAcaoMultiplayer('INICIAR_JOGO');
+    }
+  }, [ballSpeed, dispatch, state.isMultiplayer, multiplayerActions]);
 
   // Mover raquete
-  const movePaddle = (player: 1 | 2, direction: 'up' | 'down') => {
-    const step = 5;
+  const movePaddle = useCallback((player: 1 | 2, direction: 'up' | 'down') => {
+    const step = 3; // Movimento mais suave
+    
     if (player === 1) {
       setPaddle1Position(prev => ({
         ...prev,
@@ -49,10 +56,10 @@ export function CenaJogo() {
         y: Math.max(10, Math.min(70, prev.y + (direction === 'up' ? -step : step)))
       }));
     }
-  };
+  }, []);
 
   // Rebater bola
-  const rebater = () => {
+  const rebater = useCallback(() => {
     if (state.pode_rebater) {
       // Calcular ângulo de rebatida baseado na posição da raquete
       const currentPaddle = state.bola_direcao === 'indo_j1' ? paddle1Position : paddle2Position;
@@ -63,7 +70,7 @@ export function CenaJogo() {
       const angle = (distanceFromCenter / (currentPaddle.height / 2)) * maxAngle;
       
       // Calcular nova velocidade
-      const speed = ballSpeed + 0.5; // Aumentar velocidade a cada rebatida
+      const speed = ballSpeed + 0.3; // Aumento mais suave
       const radians = (angle * Math.PI) / 180;
       const newVelocityX = state.bola_direcao === 'indo_j1' ? -speed : speed;
       const newVelocityY = Math.sin(radians) * speed;
@@ -77,17 +84,28 @@ export function CenaJogo() {
       
       dispatch({ type: 'REBATER' });
       setTimer(3);
+      
+      // Sincronizar com multiplayer se ativo
+      if (state.isMultiplayer && multiplayerActions) {
+        multiplayerActions.executarAcaoMultiplayer('REBATER');
+      }
     }
-  };
+  }, [state.pode_rebater, state.bola_direcao, paddle1Position, paddle2Position, ballPosition.y, ballSpeed, dispatch, state.isMultiplayer, multiplayerActions]);
 
-  // Game loop
+  // Game loop otimizado
   useEffect(() => {
     if (!gameStarted) return;
 
-    const gameLoop = () => {
+    const gameLoop = (currentTime: number) => {
+      const deltaTime = currentTime - lastTimeRef.current;
+      lastTimeRef.current = currentTime;
+      
+      // Limitar deltaTime para evitar saltos grandes
+      const clampedDeltaTime = Math.min(deltaTime, 50);
+      
       setBallPosition(prev => {
-        let newX = prev.x + prev.velocityX;
-        let newY = prev.y + prev.velocityY;
+        let newX = prev.x + (prev.velocityX * clampedDeltaTime / 16.67); // Normalizar para 60 FPS
+        let newY = prev.y + (prev.velocityY * clampedDeltaTime / 16.67);
         let newVelocityX = prev.velocityX;
         let newVelocityY = prev.velocityY;
 
@@ -112,12 +130,18 @@ export function CenaJogo() {
         // Ponto para jogador 1 (bola passa pela direita)
         if (newX > 100) {
           dispatch({ type: 'TIMEOUT_REBATER' });
+          if (state.isMultiplayer && multiplayerActions) {
+            multiplayerActions.executarAcaoMultiplayer('TIMEOUT_REBATER');
+          }
           return { x: 50, y: 50, velocityX: 0, velocityY: 0 };
         }
 
         // Ponto para jogador 2 (bola passa pela esquerda)
         if (newX < 0) {
           dispatch({ type: 'TIMEOUT_REBATER' });
+          if (state.isMultiplayer && multiplayerActions) {
+            multiplayerActions.executarAcaoMultiplayer('TIMEOUT_REBATER');
+          }
           return { x: 50, y: 50, velocityX: 0, velocityY: 0 };
         }
 
@@ -125,14 +149,20 @@ export function CenaJogo() {
       });
     };
 
-    gameLoopRef.current = setInterval(gameLoop, 50); // 20 FPS
+    // Usar requestAnimationFrame para melhor performance
+    const animate = (currentTime: number) => {
+      gameLoop(currentTime);
+      gameLoopRef.current = requestAnimationFrame(animate);
+    };
+    
+    gameLoopRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
+        cancelAnimationFrame(gameLoopRef.current);
       }
     };
-  }, [gameStarted, paddle1Position, paddle2Position, dispatch]);
+  }, [gameStarted, paddle1Position, paddle2Position, dispatch, state.isMultiplayer, multiplayerActions]);
 
   // Timer para rebatida
   useEffect(() => {
@@ -141,6 +171,9 @@ export function CenaJogo() {
         setTimer((prev) => {
           if (prev <= 0.1) {
             dispatch({ type: 'TIMEOUT_REBATER' });
+            if (state.isMultiplayer && multiplayerActions) {
+              multiplayerActions.executarAcaoMultiplayer('TIMEOUT_REBATER');
+            }
             return 3;
           }
           return prev - 0.1;
@@ -149,9 +182,9 @@ export function CenaJogo() {
 
       return () => clearInterval(interval);
     }
-  }, [state.pode_rebater, state.timer_ativo, dispatch]);
+  }, [state.pode_rebater, state.timer_ativo, dispatch, state.isMultiplayer, multiplayerActions]);
 
-  // Controles de teclado
+  // Controles de teclado otimizados
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (!gameStarted) return;
@@ -180,7 +213,40 @@ export function CenaJogo() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameStarted, state.pode_rebater]);
+  }, [gameStarted, movePaddle, rebater]);
+
+  // Controles contínuos para movimento mais fluido
+  useEffect(() => {
+    const keys = new Set<string>();
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keys.add(e.key.toLowerCase());
+    };
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keys.delete(e.key.toLowerCase());
+    };
+    
+    const moveLoop = () => {
+      if (!gameStarted) return;
+      
+      if (keys.has('w')) movePaddle(1, 'up');
+      if (keys.has('s')) movePaddle(1, 'down');
+      if (keys.has('arrowup')) movePaddle(2, 'up');
+      if (keys.has('arrowdown')) movePaddle(2, 'down');
+    };
+    
+    const moveInterval = setInterval(moveLoop, 16); // 60 FPS para movimento
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      clearInterval(moveInterval);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [gameStarted, movePaddle]);
 
   const progressValue = Math.max(0, Math.min(100, ((3 - timer) / 3) * 100));
   const isJogador1Turn = state.bola_direcao === 'indo_j1';
@@ -206,6 +272,12 @@ export function CenaJogo() {
               <Progress value={progressValue} className="w-32 h-2" />
             </div>
           )}
+          
+          {state.isMultiplayer && (
+            <div className="text-sm text-green-400">
+              🌐 Multiplayer Ativo
+            </div>
+          )}
         </div>
       </div>
 
@@ -217,10 +289,10 @@ export function CenaJogo() {
         {/* Linhas horizontais */}
         <div className="absolute top-1/4 left-0 right-0 h-0.5 bg-white/20"></div>
         <div className="absolute top-3/4 left-0 right-0 h-0.5 bg-white/20"></div>
-
+        
         {/* Raquete Jogador 1 */}
         <div 
-          className="absolute left-4 w-3 bg-blue-400 rounded-full shadow-lg"
+          className="absolute left-4 w-3 bg-blue-400 rounded-full shadow-lg transition-transform duration-75"
           style={{
             top: `${paddle1Position.y}%`,
             height: `${paddle1Position.height}%`
@@ -229,7 +301,7 @@ export function CenaJogo() {
 
         {/* Raquete Jogador 2 */}
         <div 
-          className="absolute right-4 w-3 bg-green-400 rounded-full shadow-lg"
+          className="absolute right-4 w-3 bg-green-400 rounded-full shadow-lg transition-transform duration-75"
           style={{
             top: `${paddle2Position.y}%`,
             height: `${paddle2Position.height}%`
@@ -238,7 +310,7 @@ export function CenaJogo() {
 
         {/* Bola */}
         <div 
-          className="absolute w-4 h-4 bg-white rounded-full shadow-lg z-10"
+          className="absolute w-4 h-4 bg-white rounded-full shadow-lg z-10 transition-transform duration-75"
           style={{
             left: `${ballPosition.x}%`,
             top: `${ballPosition.y}%`,
@@ -247,7 +319,7 @@ export function CenaJogo() {
         >
           <div className="w-full h-full bg-gradient-to-br from-white to-gray-300 rounded-full"></div>
         </div>
-
+        
         {/* Controles */}
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
           <div className="bg-black/70 backdrop-blur rounded-lg p-4 text-center border border-white/20">
